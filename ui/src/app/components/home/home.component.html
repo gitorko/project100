@@ -1,0 +1,112 @@
+<div class="content-container">
+  <div class="content-area">
+    <div class="alert-section">
+      <app-alert></app-alert>
+    </div>
+
+    <div class="clr-row">
+      <div class="clr-col-9">
+        <h2 style="text-align: center">All Open Orders</h2>
+
+        <clr-datagrid [clrDgLoading]="openOrderLoading" (clrDgRefresh)="refresh($event)">
+          <clr-dg-placeholder class="content-center">No Orders!</clr-dg-placeholder>
+          <clr-dg-column>Order Id</clr-dg-column>
+          <clr-dg-column>Ticker</clr-dg-column>
+          <clr-dg-column>Price</clr-dg-column>
+          <clr-dg-column>Type</clr-dg-column>
+          <clr-dg-column>Quantity</clr-dg-column>
+          <clr-dg-column>Order Date</clr-dg-column>
+          <!-- structural directive -->
+          <clr-dg-row *ngFor="let item of openOrderPage?.content">
+            <clr-dg-cell>{{item.id}}</clr-dg-cell>
+            <clr-dg-cell>{{item.ticker}}</clr-dg-cell>
+            <clr-dg-cell>{{item.price}}</clr-dg-cell>
+            <clr-dg-cell>{{item.type}}</clr-dg-cell>
+            <clr-dg-cell>{{item.quantity}}</clr-dg-cell>
+            <clr-dg-cell>{{item.orderDate | date: 'medium'}}</clr-dg-cell>
+          </clr-dg-row>
+
+          <clr-dg-footer>
+            <clr-dg-pagination #pagination [clrDgPageSize]="10" [(clrDgPage)]="openOrderpage"
+                               [clrDgTotalItems]="openOrderTotal">
+              <clr-dg-page-size [clrPageSizeOptions]="[10,20,50,100]">Orders per page</clr-dg-page-size>
+              {{pagination.firstItem + 1}} - {{pagination.lastItem + 1}} of {{pagination.totalItems}} orders
+            </clr-dg-pagination>
+          </clr-dg-footer>
+
+        </clr-datagrid>
+      </div>
+      <div class="clr-col-3" style="border-style: dotted;">
+        <h2 style="text-align: center">Trade</h2>
+        <form clrForm>
+          <clr-input-container>
+            <label>Ticker</label>
+            <select clrInput type="text" [(ngModel)]="openOrder.ticker" name="ticker" required>
+              <option value="GOOGL">Google</option>
+              <option value="AAPL">Apple</option>
+              <option value="AMZN">Amazon</option>
+            </select>
+          </clr-input-container>
+          <clr-input-container>
+            <label>Price</label>
+            <input clrInput type="number" [(ngModel)]="openOrder.price" name="price" required/>
+          </clr-input-container>
+          <clr-input-container>
+            <label>Quantity</label>
+            <input clrInput type="number" [(ngModel)]="openOrder.quantity" name="quantity" required/>
+          </clr-input-container>
+          <clr-input-container>
+            <label>Type</label>
+            <select clrInput type="text" [(ngModel)]="openOrder.type" name="type" required>
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+          </clr-input-container>
+          <clr-control-container>
+            <button type="submit" class="btn btn-primary btn-block" (click)="placeOrder()">Submit</button>
+          </clr-control-container>
+        </form>
+        <br/>
+      </div>
+    </div>
+
+    <div class="clr-row">
+      <div class="clr-col-12">
+        <h2 style="text-align: center">All Settled Orders</h2>
+        <clr-datagrid [clrDgLoading]="settledOrderLoading" (clrDgRefresh)="refresh($event)">
+          <clr-dg-placeholder class="content-center">No Orders!</clr-dg-placeholder>
+          <clr-dg-column>Order Id</clr-dg-column>
+          <clr-dg-column>Ticker</clr-dg-column>
+          <clr-dg-column>Price</clr-dg-column>
+          <clr-dg-column>Type</clr-dg-column>
+          <clr-dg-column>Quantity</clr-dg-column>
+          <clr-dg-column>Order Date</clr-dg-column>
+          <clr-dg-column>Status</clr-dg-column>
+          <clr-dg-column>Executed Date</clr-dg-column>
+          <!-- structural directive -->
+          <clr-dg-row *ngFor="let item of settledOrderPage?.content">
+            <clr-dg-cell>{{item.id}}</clr-dg-cell>
+            <clr-dg-cell>{{item.ticker}}</clr-dg-cell>
+            <clr-dg-cell>{{item.price}}</clr-dg-cell>
+            <clr-dg-cell>{{item.type}}</clr-dg-cell>
+            <clr-dg-cell>{{item.quantity}}</clr-dg-cell>
+            <clr-dg-cell>{{item.orderDate | date: 'medium'}}</clr-dg-cell>
+            <clr-dg-cell>{{item.status}}</clr-dg-cell>
+            <clr-dg-cell>{{item.executedDate | date: 'medium'}}</clr-dg-cell>
+          </clr-dg-row>
+
+          <clr-dg-footer>
+            <clr-dg-pagination #pagination [clrDgPageSize]="10" [(clrDgPage)]="settledOrderpage"
+                               [clrDgTotalItems]="settledOrderTotal">
+              <clr-dg-page-size [clrPageSizeOptions]="[10,20,50,100]">Orders per page</clr-dg-page-size>
+              {{pagination.firstItem + 1}} - {{pagination.lastItem + 1}} of {{pagination.totalItems}} orders
+            </clr-dg-pagination>
+          </clr-dg-footer>
+
+        </clr-datagrid>
+      </div>
+    </div>
+
+  </div>
+</div>
+
