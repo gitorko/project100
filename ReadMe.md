@@ -4,6 +4,8 @@ Stock Exchange - Price Time Priority Algorithm
 
 [https://gitorko.github.io/](https://gitorko.github.io/)
 
+## Setup
+
 ### Postgres DB
 
 ```
@@ -15,8 +17,16 @@ CREATE DATABASE "test-db" WITH OWNER "test" ENCODING UTF8 TEMPLATE template0;
 grant all PRIVILEGES ON DATABASE "test-db" to test;
 ```
 
+### Dev
 
-To Run UI in DEV mode
+To run the backend in dev mode Postgres DB is needed to run the integration tests during build.
+
+```bash
+./gradlew clean build
+./gradlew bootRun
+```
+
+To Run UI in dev mode
 
 ```bash
 cd project100/ui
@@ -26,15 +36,18 @@ yarn start
 ```
 
 ### Prod
-To run as a single jar, both UI and backend are bundled to single uber jar.
 
-Postgres DB is need to run the integration tests during build.
+To run as a single jar, both UI and backend are bundled to single uber jar.
 
 ```bash
 ./gradlew cleanBuild
 cd project100/build/libs
 java -jar project100-1.0.0.jar
 ```
+
+[http://localhost:8080/](http://localhost:8080/)
+
+### Docker
 
 ```bash
 docker build -f docker/Dockerfile --force-rm -t project100:1.0.0 .
