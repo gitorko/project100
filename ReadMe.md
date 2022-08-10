@@ -50,6 +50,7 @@ java -jar project100-1.0.0.jar
 ### Docker
 
 ```bash
+./gradlew cleanBuild
 docker build -f docker/Dockerfile --force-rm -t project100:1.0.0 .
 docker images |grep project100
 docker tag project100:1.0.0 gitorko/project100:1.0.0
