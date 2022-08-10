@@ -32,5 +32,7 @@ public class SettlementSummary implements Serializable {
 
     private Long sellOrderId;
 
-    private Double buyPrice;
+    private Double price;
+    private Integer quantity;
+    private Double sale;
 }

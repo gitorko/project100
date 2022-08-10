@@ -66,11 +66,35 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order2.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(3000.0);
+        Assertions.assertThat(salePrice).isEqualTo(3000.0);
+    }
+
+    @SneakyThrows
+    @Test
+    public void test01_sell_samePriceBucket_sequentialTime() {
+        //Setup
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder order1 = createBuy(10.0, 100, processEngine);
+        OpenOrder order2 = createBuy(10.0, 200, processEngine);
+        OpenOrder order3 = createBuy(10.0, 300, processEngine);
+
+        //Test
+        OpenOrder executeOrder = createSell(10.0, 300, processEngine);
+        boolean status = processEngine.process(executeOrder);
+
+        //Validate
+        Assertions.assertThat(status).isTrue();
+        SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
+        Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findBySellOrderIdOrderByBuyOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getBuyOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
+        Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order2.getId()));
+        Assertions.assertThat(salePrice).isEqualTo(3000.0);
     }
 
     @SneakyThrows
@@ -90,11 +114,35 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(4000.0);
+        Assertions.assertThat(salePrice).isEqualTo(4000.0);
+    }
+
+    @SneakyThrows
+    @Test
+    public void test02_sell_samePriceBucket_sequentialTime_preferenceToOrderFulfillment() {
+        //Setup
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder order1 = createBuy(10.0, 100, processEngine);
+        OpenOrder order2 = createBuy(10.0, 200, processEngine);
+        OpenOrder order3 = createBuy(10.0, 300, processEngine);
+
+        //Test
+        OpenOrder executeOrder = createSell(10.0, 400, processEngine);
+        boolean status = processEngine.process(executeOrder);
+
+        //Validate
+        Assertions.assertThat(status).isTrue();
+        SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
+        Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findBySellOrderIdOrderByBuyOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getBuyOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
+        Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
+        Assertions.assertThat(salePrice).isEqualTo(4000.0);
     }
 
     @SneakyThrows
@@ -114,36 +162,13 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order2.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(5000.0);
+        Assertions.assertThat(salePrice).isEqualTo(5000.0);
     }
 
-    @SneakyThrows
-    @Test
-    public void test03_buy_firstOrderTooSmall() {
-        //Setup
-        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
-        OpenOrder order1 = createSell(10.0, 100, processEngine);
-        OpenOrder order2 = createSell(10.0, 200, processEngine);
-        OpenOrder order3 = createSell(10.0, 300, processEngine);
-
-        //Test
-        OpenOrder executeOrder = createBuy(10.0, 200, processEngine);
-        boolean status = processEngine.process(executeOrder);
-
-        //Validate
-        Assertions.assertThat(status).isTrue();
-        SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
-        Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
-        Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order2.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(2000.0);
-    }
 
     @SneakyThrows
     @Test
@@ -162,11 +187,11 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order2.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(5000.0);
+        Assertions.assertThat(salePrice).isEqualTo(5000.0);
     }
 
     @SneakyThrows
@@ -186,11 +211,11 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(4000.0);
+        Assertions.assertThat(salePrice).isEqualTo(4000.0);
     }
 
     @SneakyThrows
@@ -210,11 +235,11 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(4000.0);
+        Assertions.assertThat(salePrice).isEqualTo(3700.0);
     }
 
     @SneakyThrows
@@ -234,11 +259,11 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(4000.0);
+        Assertions.assertThat(salePrice).isEqualTo(3400.0);
     }
 
     @SneakyThrows
@@ -258,11 +283,11 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order2.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(3000.0);
+        Assertions.assertThat(salePrice).isEqualTo(2800.0);
     }
 
     @SneakyThrows
@@ -283,8 +308,8 @@ public class ProcessEngineTest {
         Optional<SettledOrder> order = settledOrderRepository.findById(executeOrder.getId());
         Assertions.assertThat(order).isEmpty();
         //Ensure the un-settled item makes it into the data structure for future processing.
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        Assertions.assertThat(byBuyOrderId.size()).isEqualTo(0);
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        Assertions.assertThat(settlementSummary.size()).isEqualTo(0);
     }
 
     @SneakyThrows
@@ -305,11 +330,11 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(4000.0);
+        Assertions.assertThat(salePrice).isEqualTo(4000.0);
     }
 
     @SneakyThrows
@@ -330,16 +355,40 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(4000.0);
+        Assertions.assertThat(salePrice).isEqualTo(3600.0);
     }
 
     @SneakyThrows
     @Test
-    public void test12_lotOfOrders() {
+    public void test12_buy_matchInMiddle() {
+        //Setup
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder order1 = createSell(10.0, 100, processEngine);
+        OpenOrder order2 = createSell(10.0, 200, processEngine);
+        OpenOrder order3 = createSell(10.0, 300, processEngine);
+
+        //Test
+        OpenOrder executeOrder = createBuy(10.0, 200, processEngine);
+        boolean status = processEngine.process(executeOrder);
+
+        //Validate
+        Assertions.assertThat(status).isTrue();
+        SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
+        Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
+        Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order2.getId()));
+        Assertions.assertThat(salePrice).isEqualTo(2000.0);
+    }
+
+    @SneakyThrows
+    @Test
+    public void test13_lotOfOrders() {
         //Setup
         ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
         OpenOrder order1 = createSell(8.0, 5, processEngine);
@@ -360,11 +409,11 @@ public class ProcessEngineTest {
         Assertions.assertThat(status).isTrue();
         SettledOrder order = settledOrderRepository.findById(executeOrder.getId()).get();
         Assertions.assertThat(order.getStatus()).isEqualTo(Status.COMPLETED);
-        List<SettlementSummary> byBuyOrderId = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
-        List<Long> soldTo = byBuyOrderId.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
-        Double soldPrice = byBuyOrderId.stream().mapToDouble(m -> m.getBuyPrice()).sum();
+        List<SettlementSummary> settlementSummary = settlementSummaryRepository.findByBuyOrderIdOrderBySellOrderId(executeOrder.getId());
+        List<Long> soldTo = settlementSummary.stream().map(m -> m.getSellOrderId()).collect(Collectors.toList());
+        Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order4.getId(), order7.getId(), order9.getId()));
-        Assertions.assertThat(soldPrice).isEqualTo(5050.0);
+        Assertions.assertThat(salePrice).isEqualTo(4250.0);
     }
 
     private ProcessEngine getProcessEngine(String ticker) {

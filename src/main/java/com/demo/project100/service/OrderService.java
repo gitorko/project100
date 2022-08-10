@@ -44,8 +44,7 @@ public class OrderService {
         if (settle) {
             orderItem.setSettle(true);
         }
-        //Happens in async thread
-        eventProcessor.processOrder(savedOrder);
+        eventProcessor.queueOrder(savedOrder);
         return savedOrder;
     }
 
@@ -70,14 +69,12 @@ public class OrderService {
     }
 
     public void simulationRandom(int records) {
-        log.info("Random Simulation!");
+        log.info("Random Simulation for: {}!", records);
         Random random = new Random();
         int minQty = 10;
         int maxQty = 100;
         double minPrice = 45.0;
         double maxPrice = 50.0;
-        ProcessEngine processEngine = (ProcessEngine) context.getBean("processEngine", STOCK_TICKER_2);
-
         for (int i = 0; i < records; i++) {
             int quantity = random.nextInt(maxQty - minQty) + minQty;
             DecimalFormat df = new DecimalFormat("#.##");
@@ -107,9 +104,7 @@ public class OrderService {
      * Same number of buy and sell order
      */
     public void simulateBalanced(int records) {
-        log.info("Balanced Simulation!");
-        ProcessEngine processEngine = (ProcessEngine) context.getBean("processEngine", STOCK_TICKER_2);
-
+        log.info("Balanced Simulation for: {}!", records);
         for (int i = 0; i < records; i++) {
             OpenOrder orderItem = OpenOrder.builder()
                     .ticker(STOCK_TICKER_2)
@@ -119,7 +114,6 @@ public class OrderService {
                     .build();
             placeOrder(orderItem, true);
         }
-
         for (int i = 0; i < records; i++) {
             OpenOrder orderItem = OpenOrder.builder()
                     .ticker(STOCK_TICKER_2)

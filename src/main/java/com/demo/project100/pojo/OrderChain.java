@@ -4,13 +4,12 @@ import com.demo.project100.domain.OpenOrder;
 import lombok.Data;
 
 @Data
-public class NodeItem {
+public class OrderChain {
     OpenOrder item;
-    NodeItem previous;
-    NodeItem next;
-    NodeItem curr;
+    OrderChain previous;
+    OrderChain next;
 
-    public NodeItem(OpenOrder item, NodeItem previous, NodeItem next) {
+    public OrderChain(OpenOrder item, OrderChain previous, OrderChain next) {
         this.item = item;
         this.previous = previous;
         this.next = next;

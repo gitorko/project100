@@ -26,9 +26,16 @@ public class MyConfig {
     @Bean(autowireCandidate = false)
     @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
     public synchronized ProcessEngine processEngine(String ticker) {
-        if (!cache.containsKey(ticker)) {
-            ProcessEngine processEngine = new ProcessEngine(ticker);
-            cache.put(ticker, processEngine);
+        if (cache.containsKey(ticker)) {
+            return cache.get(ticker);
+        } else {
+            //Double check locking
+            synchronized (this) {
+                if (!cache.containsKey(ticker)) {
+                    ProcessEngine processEngine = new ProcessEngine(ticker);
+                    cache.put(ticker, processEngine);
+                }
+            }
         }
         return cache.get(ticker);
     }

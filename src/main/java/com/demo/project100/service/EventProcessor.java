@@ -9,26 +9,36 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
 
 @Service
-@EnableAsync
 @RequiredArgsConstructor
 @Slf4j
+@EnableAsync
 public class EventProcessor {
 
     private final ApplicationContext context;
 
     /**
-     * Processing happens in async thread
+     * There is only a single thread that runs per ticker.
+     * Each ticker is getting its own dedicated single thread for processing.
+     *
+     * eg:
+     * GOOGL: async-thread-1 permanently running and processing.
+     * AMZN: async-thread-2 permanently running and processing.
+     *
+     * Thread pool size determine how many tickers are supported in each instance.
+     *
+     * Implement custom thread pool to increase pool size.
+     *
+     * Dont change to multi-thread as it will cause issues when threads context switch and dont honor order time.
      */
     @Async
-    public void processOrder(OpenOrder orderItem) {
-        log.debug("Received event {}", orderItem);
+    public void queueOrder(OpenOrder orderItem) {
+        log.debug("Queuing order {}", orderItem);
         //Get the bean associated with the stock ticker
         ProcessEngine processEngine = (ProcessEngine) context.getBean("processEngine", orderItem.getTicker());
-        processEngine.build(orderItem);
-        if (orderItem.isSettle()) {
-            //Triggers the matching process to find the relevant match order
-            boolean status = processEngine.process(orderItem);
-            log.info("Status of order: {}, {}", orderItem.getId(), status);
+        processEngine.getOrderQueue().offer(orderItem);
+        if (orderItem.isSettle() && !processEngine.isRunning()) {
+            //This starts the async thread
+            processEngine.startProcessing();
         }
     }
 

@@ -2,10 +2,10 @@ package com.demo.project100.service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import javax.transaction.Transactional;
 
 import com.demo.project100.domain.OpenOrder;
@@ -13,11 +13,13 @@ import com.demo.project100.domain.SellType;
 import com.demo.project100.domain.SettledOrder;
 import com.demo.project100.domain.SettlementSummary;
 import com.demo.project100.domain.Status;
-import com.demo.project100.pojo.NodeItem;
+import com.demo.project100.pojo.OrderChain;
+import com.demo.project100.pojo.OrderMap;
 import com.demo.project100.repo.OpenOrderRepository;
 import com.demo.project100.repo.SettledOrderRepository;
 import com.demo.project100.repo.SettlementSummaryRepository;
 import lombok.Data;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -28,9 +30,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 @Data
 public class ProcessEngine {
 
+    //Unbounded blocking queue, will take as many orders as permitted by memory.
+    private BlockingQueue<OpenOrder> orderQueue = new LinkedBlockingDeque<>();
+    private volatile boolean running;
+
     private String ticker;
-    private Map<Double, NodeItem> sellPriceMap;
-    private Map<Double, NodeItem> buyPriceMap;
+    private OrderMap sellMap;
+    private OrderMap buyMap;
 
     @Autowired
     private SettledOrderRepository settledOrderRepository;
@@ -41,151 +47,191 @@ public class ProcessEngine {
     @Autowired
     private OpenOrderRepository openOrderRepository;
 
-    public ProcessEngine(String ticker) {
-        this.ticker = ticker;
-        sellPriceMap = new TreeMap<>(Collections.reverseOrder());
-        buyPriceMap = new TreeMap<>();
-    }
-
-    public void reset() {
-        sellPriceMap = new TreeMap<>(Collections.reverseOrder());
-        buyPriceMap = new TreeMap<>();
-    }
-
-    /**
-     * Method is synchronized to avoid data structure corruption
-     * Single thread of execution per stock ticker to ensure order fulfillment is accurate
-     */
-    public synchronized void build(OpenOrder orderItem) {
-        Double key = orderItem.getPrice();
-        if (orderItem.getType().equals(SellType.SELL)) {
-            if (sellPriceMap.containsKey(key)) {
-                NodeItem currNode = sellPriceMap.get(key).getCurr();
-                NodeItem newNode = new NodeItem(orderItem, currNode, null);
-                currNode.setNext(newNode);
-                sellPriceMap.get(key).setCurr(newNode);
-            } else {
-                NodeItem currNode = new NodeItem(orderItem, null, null);
-                currNode.setCurr(currNode);
-                sellPriceMap.put(key, currNode);
-            }
-        } else {
-            if (buyPriceMap.containsKey(key)) {
-                NodeItem currNode = buyPriceMap.get(key).getCurr();
-                NodeItem newNode = new NodeItem(orderItem, currNode, null);
-                currNode.setNext(newNode);
-                buyPriceMap.get(key).setCurr(newNode);
-            } else {
-                NodeItem currNode = new NodeItem(orderItem, null, null);
-                currNode.setCurr(currNode);
-                buyPriceMap.put(key, currNode);
-            }
-        }
-    }
-
-    /**
-     * Method is synchronized to avoid data structure corruption
-     * Single thread of execution per stock ticker to ensure order fulfillment is accurate
-     */
-    public synchronized boolean process(OpenOrder orderItem) {
-        if (orderItem.getType().equals(SellType.BUY)) {
-            return processOrder(orderItem, sellPriceMap, buyPriceMap);
-        } else {
-            return processOrder(orderItem, buyPriceMap, sellPriceMap);
-        }
-    }
-
-    private boolean processOrder(OpenOrder orderItem, Map<Double, NodeItem> priceMap1, Map<Double, NodeItem> priceMap2) {
-        List<NodeItem> nodeItems = new ArrayList<>();
-        //Create list of all orders
-        for (Map.Entry<Double, NodeItem> entry : priceMap1.entrySet()) {
-            if (entry.getKey() <= orderItem.getPrice()) {
-                NodeItem nodeHead = entry.getValue();
-                while (nodeHead != null) {
-                    nodeItems.add(nodeHead);
-                    nodeHead = nodeHead.getNext();
+    @SneakyThrows
+    public void startProcessing() {
+        //Double check locking to avoid running thread more than once.
+        if (!running) {
+            synchronized (this) {
+                if (!running) {
+                    running = true;
+                    while (true) {
+                        OpenOrder orderItem = orderQueue.take();
+                        log.info("Processing order {}", orderItem);
+                        build(orderItem);
+                        if (orderItem.isSettle()) {
+                            //Triggers the matching process to find the relevant match order
+                            boolean status = process(orderItem);
+                            log.info("Status of order: {}, {}", orderItem.getId(), status);
+                        }
+                    }
                 }
             }
         }
-        List<NodeItem> resultNodeItems = new CombinationSum().combinationSum(nodeItems, orderItem.getQuantity());
+    }
 
-        if (resultNodeItems.size() > 0) {
+    public ProcessEngine(String ticker) {
+        this.ticker = ticker;
+        sellMap = new OrderMap(true);
+        buyMap = new OrderMap();
+    }
+
+    public synchronized void reset() {
+        sellMap = new OrderMap(true);
+        buyMap = new OrderMap();
+    }
+
+    /**
+     * Method is not synchronized as its a single thread execution model.
+     * If its multi-thread then there can be data structure corruption
+     * Single thread of execution per stock ticker to ensure order fulfillment is accurate.
+     */
+    public void build(OpenOrder orderItem) {
+        Double key = orderItem.getPrice();
+        if (orderItem.getType().equals(SellType.SELL)) {
+            OrderChain newNode;
+            if (sellMap.getPriceMap().containsKey(key)) {
+                OrderChain currNode = sellMap.getCurrMap().get(key);
+                newNode = new OrderChain(orderItem, currNode, null);
+                currNode.setNext(newNode);
+                sellMap.getCurrMap().put(key, newNode);
+            } else {
+                //New node
+                newNode = new OrderChain(orderItem, null, null);
+                sellMap.getCurrMap().put(key, newNode);
+                sellMap.getPriceMap().put(key, newNode);
+            }
+        } else {
+            OrderChain newNode;
+            if (buyMap.getPriceMap().containsKey(key)) {
+                OrderChain currNode = buyMap.getCurrMap().get(key);
+                newNode = new OrderChain(orderItem, currNode, null);
+                currNode.setNext(newNode);
+                buyMap.getCurrMap().put(key, newNode);
+            } else {
+                //New node
+                newNode = new OrderChain(orderItem, null, null);
+                buyMap.getCurrMap().put(key, newNode);
+                buyMap.getPriceMap().put(key, newNode);
+            }
+        }
+    }
+
+    /**
+     * Method is not synchronized as its a single thread execution model.
+     * If its multi-thread then there can be data structure corruption
+     * Single thread of execution per stock ticker to ensure order fulfillment is accurate.
+     */
+    public boolean process(OpenOrder orderItem) {
+        if (orderItem.getType().equals(SellType.BUY)) {
+            return processOrder(orderItem, sellMap, buyMap, SellType.BUY);
+        } else {
+            return processOrder(orderItem, buyMap, sellMap, SellType.SELL);
+        }
+    }
+
+    private boolean processOrder(OpenOrder orderItem, OrderMap orderMap1, OrderMap orderMap2, SellType sellType) {
+        List<OrderChain> resultOrderChains = new ArrayList<>();
+        if (orderMap1.getPriceMap().size() > 0) {
+            //Short circuit and link all nodes in one long continuous chain.
+            List<OrderChain> revertList = new ArrayList<>();
+
+            OrderChain previous = null;
+            for (Map.Entry<Double, OrderChain> entry : orderMap1.getPriceMap().entrySet()) {
+                if (previous != null) {
+                    revertList.add(previous);
+                    previous.setNext(orderMap1.getPriceMap().get(entry.getKey()));
+                }
+                if (entry.getKey() <= orderItem.getPrice()) {
+                    previous = orderMap1.getCurrMap().get(entry.getKey());
+                }
+            }
+            resultOrderChains = new CombinationSum().combinationSum(orderMap1.getPriceMap().get(orderItem.getPrice()), orderItem.getQuantity());
+
+            //Reset the short circuiting.
+            for (OrderChain revertItem : revertList) {
+                revertItem.setNext(null);
+            }
+        }
+
+        if (resultOrderChains.size() > 0) {
 
             //Clean the Map2
-            NodeItem orderItemNode = priceMap2.get(orderItem.getPrice());
+            OrderChain orderItemNode = orderMap2.getPriceMap().get(orderItem.getPrice());
             if (orderItemNode != null) {
                 if (orderItemNode.getPrevious() == null && orderItemNode.getNext() == null) {
                     //If its the only node then delete the map key
-                    priceMap2.remove(orderItemNode.getItem().getPrice());
+                    orderMap2.getPriceMap().remove(orderItemNode.getItem().getPrice());
+                    orderMap2.getCurrMap().remove(orderItemNode.getItem().getPrice());
                 } else if (orderItemNode.getPrevious() == null && orderItemNode.getNext() != null) {
                     //If its the first node then point head to next node.
-                    NodeItem newHead = orderItemNode.getNext();
+                    OrderChain newHead = orderItemNode.getNext();
                     newHead.setPrevious(null);
                     orderItemNode.setNext(null);
-                    priceMap2.put(newHead.getItem().getPrice(), newHead);
+                    orderMap2.getPriceMap().put(newHead.getItem().getPrice(), newHead);
                     //Set the currNode
-                    priceMap2.get(newHead.getItem().getPrice()).setCurr(newHead);
+                    orderMap2.getCurrMap().put(newHead.getItem().getPrice(), newHead);
                 } else if (orderItemNode.getPrevious() != null && orderItemNode.getNext() != null) {
                     //If node in middle, break both links
-                    NodeItem newNext = orderItemNode.getNext();
-                    NodeItem newPrevious = orderItemNode.getPrevious();
+                    OrderChain newNext = orderItemNode.getNext();
+                    OrderChain newPrevious = orderItemNode.getPrevious();
                     newPrevious.setNext(newNext);
                     newNext.setPrevious(newPrevious);
                     orderItemNode.setPrevious(null);
                     orderItemNode.setNext(null);
                 } else if (orderItemNode.getPrevious() != null && orderItemNode.getNext() == null) {
                     //Last node
-                    NodeItem previousNode = orderItemNode.getPrevious();
+                    OrderChain previousNode = orderItemNode.getPrevious();
                     previousNode.setNext(null);
                     orderItemNode.setPrevious(null);
                     //Set the currNode
-                    priceMap2.get(previousNode.getItem().getPrice()).setCurr(previousNode);
+                    orderMap2.getCurrMap().put(previousNode.getItem().getPrice(), previousNode);
                 }
             }
 
             //Break the links & clean Map1
-            for (NodeItem nodeItem : resultNodeItems) {
-                if (nodeItem.getPrevious() == null && nodeItem.getNext() == null) {
+            for (OrderChain orderChain : resultOrderChains) {
+                if (orderChain.getPrevious() == null && orderChain.getNext() == null) {
                     //If its the only node then delete the map key
-                    priceMap1.remove(nodeItem.getItem().getPrice());
-                } else if (nodeItem.getPrevious() == null && nodeItem.getNext() != null) {
+                    orderMap1.getPriceMap().remove(orderChain.getItem().getPrice());
+                    orderMap1.getCurrMap().remove(orderChain.getItem().getPrice());
+                } else if (orderChain.getPrevious() == null && orderChain.getNext() != null) {
                     //If its the first node then point head to next node.
-                    NodeItem newHead = nodeItem.getNext();
+                    OrderChain newHead = orderChain.getNext();
                     newHead.setPrevious(null);
-                    nodeItem.setNext(null);
-                    priceMap1.put(newHead.getItem().getPrice(), newHead);
+                    orderChain.setNext(null);
+                    orderMap1.getPriceMap().put(newHead.getItem().getPrice(), newHead);
                     //Set the currNode
-                    priceMap1.get(newHead.getItem().getPrice()).setCurr(newHead);
-                } else if (nodeItem.getPrevious() != null && nodeItem.getNext() != null) {
+                    orderMap1.getCurrMap().put(newHead.getItem().getPrice(), newHead);
+                } else if (orderChain.getPrevious() != null && orderChain.getNext() != null) {
                     //If node in middle, break both links
-                    NodeItem newNext = nodeItem.getNext();
-                    NodeItem newPrevious = nodeItem.getPrevious();
+                    OrderChain newNext = orderChain.getNext();
+                    OrderChain newPrevious = orderChain.getPrevious();
                     newPrevious.setNext(newNext);
                     newNext.setPrevious(newPrevious);
-                    nodeItem.setPrevious(null);
-                    nodeItem.setNext(null);
-                } else if (nodeItem.getPrevious() != null && nodeItem.getNext() == null) {
+                    orderChain.setPrevious(null);
+                    orderChain.setNext(null);
+                } else if (orderChain.getPrevious() != null && orderChain.getNext() == null) {
                     //Last node
-                    NodeItem previousNode = nodeItem.getPrevious();
+                    OrderChain previousNode = orderChain.getPrevious();
                     previousNode.setNext(null);
-                    nodeItem.setPrevious(null);
+                    orderChain.setPrevious(null);
                     //Set the currNode
-                    priceMap1.get(previousNode.getItem().getPrice()).setCurr(previousNode);
+                    orderMap1.getCurrMap().put(previousNode.getItem().getPrice(), previousNode);
                 }
             }
 
             List<OpenOrder> result = new ArrayList<>();
-            for (NodeItem nodeItem : resultNodeItems) {
-                result.add(nodeItem.getItem());
+            for (OrderChain orderChain : resultOrderChains) {
+                result.add(orderChain.getItem());
             }
-            completeOrder(orderItem, result);
+            completeOrder(orderItem, result, sellType);
             return true;
         }
         return false;
     }
 
     @Transactional
-    public void completeOrder(OpenOrder openOrder, List<OpenOrder> resultOrders) {
+    public void completeOrder(OpenOrder openOrder, List<OpenOrder> resultOrders, SellType sellType) {
         List<SettledOrder> completeItems = new ArrayList<>();
         List<SettlementSummary> settlementSummaries = new ArrayList<>();
         List<Long> deleteOrderIds = new ArrayList<>();
@@ -226,7 +272,9 @@ public class ProcessEngine {
                     settlementSummaries.add(SettlementSummary.builder()
                             .buyOrderId(settledOrder.getId())
                             .sellOrderId(item.getId())
-                            .buyPrice(settledOrder.getPrice() * item.getQuantity())
+                            .price(item.getPrice())
+                            .quantity(item.getQuantity())
+                            .sale(item.getPrice() * item.getQuantity())
                             .build());
                 }
             }
@@ -237,7 +285,9 @@ public class ProcessEngine {
                     settlementSummaries.add(SettlementSummary.builder()
                             .buyOrderId(item.getId())
                             .sellOrderId(settledOrder.getId())
-                            .buyPrice(item.getPrice() * settledOrder.getQuantity())
+                            .price(settledOrder.getPrice())
+                            .quantity(item.getQuantity())
+                            .sale(settledOrder.getPrice() * item.getQuantity())
                             .build());
                 }
             }
