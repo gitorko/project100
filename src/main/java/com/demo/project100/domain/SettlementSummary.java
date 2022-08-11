@@ -32,7 +32,10 @@ public class SettlementSummary implements Serializable {
 
     private Long sellOrderId;
 
+    @Column(columnDefinition = "DECIMAL(10,2)")
     private Double price;
     private Integer quantity;
+
+    @Column(columnDefinition = "DECIMAL(10,2)")
     private Double sale;
 }

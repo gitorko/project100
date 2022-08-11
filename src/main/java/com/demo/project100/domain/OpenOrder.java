@@ -41,6 +41,7 @@ public class OpenOrder implements Serializable {
     private String ticker;
 
     @NotNull
+    @Column(columnDefinition = "DECIMAL(10,2)")
     private Double price;
 
     @Enumerated(EnumType.STRING)
