@@ -99,17 +99,24 @@ export class HomeComponent implements OnInit {
       );
   }
 
-  refresh(state: ClrDatagridStateInterface) {
+  refreshOpenOrder(state: ClrDatagridStateInterface) {
     this.openOrderDebouncer.next(state);
+  }
+
+  refreshSettledOrder(state: ClrDatagridStateInterface) {
     this.settledOrderDebouncer.next(state);
   }
 
   placeOrder(): void {
     console.log('save order!');
+    if (this.openOrder.price < 0 || this.openOrder.quantity < 0) {
+      return;
+    }
     this.restService.placeOrder(this.openOrder)
       .subscribe(data => {
         this.alert.showSuccess('Order placed successfully!');
-        this.refresh(this.openOrderTableState);
+        this.refreshOpenOrder(this.openOrderTableState)
+        this.refreshSettledOrder(this.settledOrderTableState)
       }, error => {
         this.alert.showError('Order failed!');
       });

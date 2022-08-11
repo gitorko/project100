@@ -1,6 +1,5 @@
 package com.demo.project100.service;
 
-import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -31,8 +30,6 @@ public class OrderService {
     private final EventProcessor eventProcessor;
     private final ApplicationContext context;
     private final MyConfig myConfig;
-
-    private static final String STOCK_TICKER_2 = "AMZN";
 
     /**
      * Save the order to db.
@@ -68,60 +65,29 @@ public class OrderService {
         myConfig.setCache(new HashMap<>());
     }
 
+    /**
+     * Different number of buy and sell orders
+     */
     public void simulationRandom(int records) {
         log.info("Random Simulation for: {}!", records);
         Random random = new Random();
-        int minQty = 10;
-        int maxQty = 100;
-        double minPrice = 45.0;
-        double maxPrice = 50.0;
         for (int i = 0; i < records; i++) {
-            int quantity = random.nextInt(maxQty - minQty) + minQty;
-            DecimalFormat df = new DecimalFormat("#.##");
-            double price = Double.parseDouble(df.format((random.nextDouble(maxPrice - minPrice) + minPrice)));
             boolean sell = random.nextBoolean();
-            OpenOrder orderItem;
             if (sell) {
-                orderItem = OpenOrder.builder()
-                        .ticker(STOCK_TICKER_2)
-                        .price(price)
-                        .quantity(quantity)
-                        .type(SellType.SELL)
-                        .build();
+                eventProcessor.simulationRandom(this, SellType.SELL);
             } else {
-                orderItem = OpenOrder.builder()
-                        .ticker(STOCK_TICKER_2)
-                        .price(price)
-                        .quantity(quantity)
-                        .type(SellType.BUY)
-                        .build();
+                eventProcessor.simulationRandom(this, SellType.BUY);
             }
-            placeOrder(orderItem, true);
         }
     }
 
     /**
-     * Same number of buy and sell order
+     * Simulate orders
      */
-    public void simulateBalanced(int records) {
-        log.info("Balanced Simulation for: {}!", records);
+    public void simulate(int records, SellType sellType) {
+        log.info("Simulate for: {}!", records);
         for (int i = 0; i < records; i++) {
-            OpenOrder orderItem = OpenOrder.builder()
-                    .ticker(STOCK_TICKER_2)
-                    .price(10.0)
-                    .quantity(100)
-                    .type(SellType.SELL)
-                    .build();
-            placeOrder(orderItem, true);
-        }
-        for (int i = 0; i < records; i++) {
-            OpenOrder orderItem = OpenOrder.builder()
-                    .ticker(STOCK_TICKER_2)
-                    .price(10.0)
-                    .quantity(100)
-                    .type(SellType.BUY)
-                    .build();
-            placeOrder(orderItem, true);
+            eventProcessor.simulate(this, sellType);
         }
     }
 }

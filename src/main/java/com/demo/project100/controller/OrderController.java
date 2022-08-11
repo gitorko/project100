@@ -1,6 +1,7 @@
 package com.demo.project100.controller;
 
 import com.demo.project100.domain.OpenOrder;
+import com.demo.project100.domain.SellType;
 import com.demo.project100.domain.SettledOrder;
 import com.demo.project100.service.OrderService;
 import lombok.RequiredArgsConstructor;
@@ -46,8 +47,13 @@ public class OrderController {
         orderService.simulationRandom(records);
     }
 
-    @GetMapping("/api/simulate-balanced/{records}")
-    public void simulateBalanced(@PathVariable int records) {
-        orderService.simulateBalanced(records);
+    @GetMapping("/api/simulate-sell/{records}")
+    public void simulateSell(@PathVariable int records) {
+        orderService.simulate(records, SellType.SELL);
+    }
+
+    @GetMapping("/api/simulate-buy/{records}")
+    public void simulateBuy(@PathVariable int records) {
+        orderService.simulate(records, SellType.BUY);
     }
 }

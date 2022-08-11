@@ -82,7 +82,7 @@ public class ProcessEngine {
 
     /**
      * Method is not synchronized as its a single thread execution model.
-     * If its multi-thread then there can be data structure corruption
+     * If its multi-thread then there will be data structure corruption
      * Single thread of execution per stock ticker to ensure order fulfillment is accurate.
      */
     public void build(OpenOrder orderItem) {
@@ -90,6 +90,7 @@ public class ProcessEngine {
         if (orderItem.getType().equals(SellType.SELL)) {
             OrderChain newNode;
             if (sellMap.getPriceMap().containsKey(key)) {
+                //already exists
                 OrderChain currNode = sellMap.getCurrMap().get(key);
                 newNode = new OrderChain(orderItem, currNode, null);
                 currNode.setNext(newNode);
@@ -103,6 +104,7 @@ public class ProcessEngine {
         } else {
             OrderChain newNode;
             if (buyMap.getPriceMap().containsKey(key)) {
+                //already exists
                 OrderChain currNode = buyMap.getCurrMap().get(key);
                 newNode = new OrderChain(orderItem, currNode, null);
                 currNode.setNext(newNode);
@@ -118,7 +120,7 @@ public class ProcessEngine {
 
     /**
      * Method is not synchronized as its a single thread execution model.
-     * If its multi-thread then there can be data structure corruption
+     * If its multi-thread then there will be data structure corruption
      * Single thread of execution per stock ticker to ensure order fulfillment is accurate.
      */
     public boolean process(OpenOrder orderItem) {
@@ -145,6 +147,8 @@ public class ProcessEngine {
                     previous = orderMap1.getCurrMap().get(entry.getKey());
                 }
             }
+
+            //Find if order can be fulfilled
             resultOrderChains = new CombinationSum().combinationSum(orderMap1.getPriceMap().get(orderItem.getPrice()), orderItem.getQuantity());
 
             //Reset the short circuiting.

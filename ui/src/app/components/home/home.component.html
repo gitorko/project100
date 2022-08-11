@@ -8,7 +8,7 @@
       <div class="clr-col-9">
         <h2 style="text-align: center">All Open Orders</h2>
 
-        <clr-datagrid [clrDgLoading]="openOrderLoading" (clrDgRefresh)="refresh($event)">
+        <clr-datagrid [clrDgLoading]="openOrderLoading" (clrDgRefresh)="refreshOpenOrder($event)">
           <clr-dg-placeholder class="content-center">No Orders!</clr-dg-placeholder>
           <clr-dg-column>Order Id</clr-dg-column>
           <clr-dg-column>Ticker</clr-dg-column>
@@ -27,10 +27,10 @@
           </clr-dg-row>
 
           <clr-dg-footer>
-            <clr-dg-pagination #pagination [clrDgPageSize]="10" [(clrDgPage)]="openOrderpage"
+            <clr-dg-pagination #pagination1 [clrDgPageSize]="10" [(clrDgPage)]="openOrderpage"
                                [clrDgTotalItems]="openOrderTotal">
               <clr-dg-page-size [clrPageSizeOptions]="[10,20,50,100]">Orders per page</clr-dg-page-size>
-              {{pagination.firstItem + 1}} - {{pagination.lastItem + 1}} of {{pagination.totalItems}} orders
+              {{pagination1.firstItem + 1}} - {{pagination1.lastItem + 1}} of {{pagination1.totalItems}} orders
             </clr-dg-pagination>
           </clr-dg-footer>
 
@@ -49,11 +49,11 @@
           </clr-input-container>
           <clr-input-container>
             <label>Price</label>
-            <input clrInput type="number" [(ngModel)]="openOrder.price" name="price" required/>
+            <input clrInput type="number" [(ngModel)]="openOrder.price" name="price" min="0" required/>
           </clr-input-container>
           <clr-input-container>
             <label>Quantity</label>
-            <input clrInput type="number" [(ngModel)]="openOrder.quantity" name="quantity" required/>
+            <input clrInput type="number" [(ngModel)]="openOrder.quantity" name="quantity" min="0" step="1" required/>
           </clr-input-container>
           <clr-input-container>
             <label>Type</label>
@@ -73,7 +73,7 @@
     <div class="clr-row">
       <div class="clr-col-12">
         <h2 style="text-align: center">All Settled Orders</h2>
-        <clr-datagrid [clrDgLoading]="settledOrderLoading" (clrDgRefresh)="refresh($event)">
+        <clr-datagrid [clrDgLoading]="settledOrderLoading" (clrDgRefresh)="refreshSettledOrder($event)">
           <clr-dg-placeholder class="content-center">No Orders!</clr-dg-placeholder>
           <clr-dg-column>Order Id</clr-dg-column>
           <clr-dg-column>Ticker</clr-dg-column>
@@ -96,10 +96,10 @@
           </clr-dg-row>
 
           <clr-dg-footer>
-            <clr-dg-pagination #pagination [clrDgPageSize]="10" [(clrDgPage)]="settledOrderpage"
+            <clr-dg-pagination #pagination2 [clrDgPageSize]="10" [(clrDgPage)]="settledOrderpage"
                                [clrDgTotalItems]="settledOrderTotal">
               <clr-dg-page-size [clrPageSizeOptions]="[10,20,50,100]">Orders per page</clr-dg-page-size>
-              {{pagination.firstItem + 1}} - {{pagination.lastItem + 1}} of {{pagination.totalItems}} orders
+              {{pagination2.firstItem + 1}} - {{pagination2.lastItem + 1}} of {{pagination2.totalItems}} orders
             </clr-dg-pagination>
           </clr-dg-footer>
 

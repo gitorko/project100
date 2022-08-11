@@ -178,7 +178,7 @@
 			"response": []
 		},
 		{
-			"name": "Simulation Balanced",
+			"name": "Simulation Buy",
 			"protocolProfileBehavior": {
 				"disableBodyPruning": true
 			},
@@ -195,7 +195,7 @@
 					}
 				},
 				"url": {
-					"raw": "http://localhost:8080/api/simulate-balanced/10",
+					"raw": "http://localhost:8080/api/simulate-buy/5000",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -203,8 +203,41 @@
 					"port": "8080",
 					"path": [
 						"api",
-						"simulate-balanced",
-						"10"
+						"simulate-buy",
+						"5000"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Simulation Sell",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"ticker\" : \"MYSTK\",\n    \"price\" : 10.0,\n    \"type\" : \"SELL\",\n    \"quantity\": 100\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/api/simulate-sell/5000",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"simulate-sell",
+						"5000"
 					]
 				}
 			},
