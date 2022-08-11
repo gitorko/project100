@@ -91,28 +91,28 @@ public class ProcessEngine {
             OrderChain newNode;
             if (sellMap.getPriceMap().containsKey(key)) {
                 //already exists
-                OrderChain currNode = sellMap.getCurrMap().get(key);
+                OrderChain currNode = sellMap.getLastNodeMap().get(key);
                 newNode = new OrderChain(orderItem, currNode, null);
                 currNode.setNext(newNode);
-                sellMap.getCurrMap().put(key, newNode);
+                sellMap.getLastNodeMap().put(key, newNode);
             } else {
                 //New node
                 newNode = new OrderChain(orderItem, null, null);
-                sellMap.getCurrMap().put(key, newNode);
+                sellMap.getLastNodeMap().put(key, newNode);
                 sellMap.getPriceMap().put(key, newNode);
             }
         } else {
             OrderChain newNode;
             if (buyMap.getPriceMap().containsKey(key)) {
                 //already exists
-                OrderChain currNode = buyMap.getCurrMap().get(key);
+                OrderChain currNode = buyMap.getLastNodeMap().get(key);
                 newNode = new OrderChain(orderItem, currNode, null);
                 currNode.setNext(newNode);
-                buyMap.getCurrMap().put(key, newNode);
+                buyMap.getLastNodeMap().put(key, newNode);
             } else {
                 //New node
                 newNode = new OrderChain(orderItem, null, null);
-                buyMap.getCurrMap().put(key, newNode);
+                buyMap.getLastNodeMap().put(key, newNode);
                 buyMap.getPriceMap().put(key, newNode);
             }
         }
@@ -144,7 +144,7 @@ public class ProcessEngine {
                     previous.setNext(orderMap1.getPriceMap().get(entry.getKey()));
                 }
                 if (entry.getKey() <= orderItem.getPrice()) {
-                    previous = orderMap1.getCurrMap().get(entry.getKey());
+                    previous = orderMap1.getLastNodeMap().get(entry.getKey());
                 }
             }
 
@@ -165,7 +165,7 @@ public class ProcessEngine {
                 if (orderItemNode.getPrevious() == null && orderItemNode.getNext() == null) {
                     //If its the only node then delete the map key
                     orderMap2.getPriceMap().remove(orderItemNode.getItem().getPrice());
-                    orderMap2.getCurrMap().remove(orderItemNode.getItem().getPrice());
+                    orderMap2.getLastNodeMap().remove(orderItemNode.getItem().getPrice());
                 } else if (orderItemNode.getPrevious() == null && orderItemNode.getNext() != null) {
                     //If its the first node then point head to next node.
                     OrderChain newHead = orderItemNode.getNext();
@@ -173,7 +173,7 @@ public class ProcessEngine {
                     orderItemNode.setNext(null);
                     orderMap2.getPriceMap().put(newHead.getItem().getPrice(), newHead);
                     //Set the currNode
-                    orderMap2.getCurrMap().put(newHead.getItem().getPrice(), newHead);
+                    orderMap2.getLastNodeMap().put(newHead.getItem().getPrice(), newHead);
                 } else if (orderItemNode.getPrevious() != null && orderItemNode.getNext() != null) {
                     //If node in middle, break both links
                     OrderChain newNext = orderItemNode.getNext();
@@ -188,7 +188,7 @@ public class ProcessEngine {
                     previousNode.setNext(null);
                     orderItemNode.setPrevious(null);
                     //Set the currNode
-                    orderMap2.getCurrMap().put(previousNode.getItem().getPrice(), previousNode);
+                    orderMap2.getLastNodeMap().put(previousNode.getItem().getPrice(), previousNode);
                 }
             }
 
@@ -197,7 +197,7 @@ public class ProcessEngine {
                 if (orderChain.getPrevious() == null && orderChain.getNext() == null) {
                     //If its the only node then delete the map key
                     orderMap1.getPriceMap().remove(orderChain.getItem().getPrice());
-                    orderMap1.getCurrMap().remove(orderChain.getItem().getPrice());
+                    orderMap1.getLastNodeMap().remove(orderChain.getItem().getPrice());
                 } else if (orderChain.getPrevious() == null && orderChain.getNext() != null) {
                     //If its the first node then point head to next node.
                     OrderChain newHead = orderChain.getNext();
@@ -205,7 +205,7 @@ public class ProcessEngine {
                     orderChain.setNext(null);
                     orderMap1.getPriceMap().put(newHead.getItem().getPrice(), newHead);
                     //Set the currNode
-                    orderMap1.getCurrMap().put(newHead.getItem().getPrice(), newHead);
+                    orderMap1.getLastNodeMap().put(newHead.getItem().getPrice(), newHead);
                 } else if (orderChain.getPrevious() != null && orderChain.getNext() != null) {
                     //If node in middle, break both links
                     OrderChain newNext = orderChain.getNext();
@@ -220,7 +220,7 @@ public class ProcessEngine {
                     previousNode.setNext(null);
                     orderChain.setPrevious(null);
                     //Set the currNode
-                    orderMap1.getCurrMap().put(previousNode.getItem().getPrice(), previousNode);
+                    orderMap1.getLastNodeMap().put(previousNode.getItem().getPrice(), previousNode);
                 }
             }
 

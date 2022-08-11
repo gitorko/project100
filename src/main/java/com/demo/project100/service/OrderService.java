@@ -14,7 +14,6 @@ import com.demo.project100.repo.SettledOrderRepository;
 import com.demo.project100.repo.SettlementSummaryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -28,7 +27,6 @@ public class OrderService {
     private final SettlementSummaryRepository settlementSummaryRepository;
     private final OpenOrderRepository openOrderRepository;
     private final EventProcessor eventProcessor;
-    private final ApplicationContext context;
     private final MyConfig myConfig;
 
     /**

@@ -398,7 +398,7 @@ public class ProcessEngineTest {
         OpenOrder order5 = createSell(10.0, 100, processEngine);
         OpenOrder order6 = createSell(10.0, 1000, processEngine);
         OpenOrder order7 = createSell(9.0, 200, processEngine);
-        OpenOrder order8 = createSell(9.0, 50, processEngine);
+        OpenOrder order8 = createSell(9.0, 500, processEngine);
         OpenOrder order9 = createSell(8.0, 300, processEngine);
 
         //Test
