@@ -32,7 +32,8 @@ grant all PRIVILEGES ON DATABASE "test-db" to test;
 
 ### Dev
 
-To run the backend in dev mode Postgres DB is needed to run the integration tests during build.
+To run the backend in dev mode.
+Postgres DB is needed to run the integration tests during build.
 
 ```bash
 ./gradlew clean build
