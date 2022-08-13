@@ -9,7 +9,7 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - /tmp/pgdata:/var/lib/postgresql/data
+      - /tmp/pgdata100:/var/lib/postgresql/data
   web-server:
     image: gitorko/project100:1.0.0
     ports:
