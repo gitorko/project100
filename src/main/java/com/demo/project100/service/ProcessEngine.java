@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 
 import com.demo.project100.domain.OpenOrder;
 import com.demo.project100.domain.SellType;
