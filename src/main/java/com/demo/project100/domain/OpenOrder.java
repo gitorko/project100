@@ -11,7 +11,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.PrePersist;
 import jakarta.validation.constraints.NotNull;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -50,9 +52,20 @@ public class OpenOrder implements Serializable {
     @NotNull
     private Integer quantity;
 
+    /** Original quantity, retained while quantity tracks the unfilled remainder. */
+    @JsonIgnore
+    private Integer originalQuantity;
+
     @NotNull
     private LocalDateTime orderDate;
 
     @Transient
     private boolean settle;
+
+    @PrePersist
+    private void initializeOriginalQuantity() {
+        if (originalQuantity == null) {
+            originalQuantity = quantity;
+        }
+    }
 }

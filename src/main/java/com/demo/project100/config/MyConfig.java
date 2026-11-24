@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.demo.project100.service.ProcessEngine;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.Data;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +16,9 @@ import org.springframework.context.annotation.Scope;
 public class MyConfig {
 
     Map<String, ProcessEngine> cache = new HashMap<>();
+
+    @Value("${stock-exchange.matching.mode:WHOLE_ORDER}")
+    private String matchingMode;
 
     /**
      * Each stock ticker gets its own ProcessEngine bean
@@ -32,7 +36,7 @@ public class MyConfig {
             //Double check locking
             synchronized (this) {
                 if (!cache.containsKey(ticker)) {
-                    ProcessEngine processEngine = new ProcessEngine(ticker);
+                    ProcessEngine processEngine = new ProcessEngine(ticker, matchingMode);
                     cache.put(ticker, processEngine);
                 }
             }

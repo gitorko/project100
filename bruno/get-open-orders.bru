@@ -1,0 +1,11 @@
+meta {
+  name: Get Open Orders
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/open-order?page=0&sort=id,desc
+  body: none
+  auth: none
+}

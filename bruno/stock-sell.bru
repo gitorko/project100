@@ -1,0 +1,20 @@
+meta {
+  name: Stock Sell
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/order
+  body: json
+  auth: none
+}
+
+body:json {
+{
+    "ticker" : "GOOGL",
+    "price" : 10.0,
+    "type" : "SELL",
+    "quantity": 100
+}
+}

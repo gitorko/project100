@@ -3,13 +3,17 @@ spring:
     banner-mode: "off"
   datasource:
     driver-class-name: org.postgresql.Driver
-    host: localhost
-    url: jdbc:postgresql://${spring.datasource.host}:5432/test-db
-    username: test
-    password: test@123
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:5432/${POSTGRES_DB:stock_exchange}}
+    username: ${POSTGRES_USER:stock_exchange}
+    password: ${POSTGRES_PASSWORD:stock_exchange}
   jpa:
     show-sql: false
-    hibernate.ddl-auto: create-drop
+    hibernate.ddl-auto: update
     properties.hibernate.temp.use_jdbc_metadata_defaults: false
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     defer-datasource-initialization: true
+
+stock-exchange:
+  matching:
+    # WHOLE_ORDER preserves the original behavior. Use PARTIAL to allow residual orders.
+    mode: ${STOCK_EXCHANGE_MATCHING_MODE:WHOLE_ORDER}

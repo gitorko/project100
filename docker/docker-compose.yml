@@ -1,21 +1,35 @@
-version: '3.8'
 services:
   db-server:
-    image: postgres:9.6.10
+    image: postgres:18.7
     environment:
-      - POSTGRES_USER=test
-      - POSTGRES_PASSWORD=test@123
-      - POSTGRES_DB=test-db
+      POSTGRES_USER: ${POSTGRES_USER:-stock_exchange}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stock_exchange}
+      POSTGRES_DB: ${POSTGRES_DB:-stock_exchange}
     ports:
-      - '5432:5432'
+      - "5432:5432"
     volumes:
-      - /tmp/pgdata100:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stock_exchange} -d ${POSTGRES_DB:-stock_exchange}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   web-server:
-    image: gitorko/project100:1.0.0
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db-server:5432/${POSTGRES_DB:-stock_exchange}
+      POSTGRES_USER: ${POSTGRES_USER:-stock_exchange}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stock_exchange}
+      POSTGRES_DB: ${POSTGRES_DB:-stock_exchange}
+      STOCK_EXCHANGE_MATCHING_MODE: ${STOCK_EXCHANGE_MATCHING_MODE:-WHOLE_ORDER}
     ports:
       - "8080:8080"
-    links:
-      - db-server
     depends_on:
       db-server:
-        condition: service_started
+        condition: service_healthy
+
+volumes:
+  postgres-data:

@@ -22,12 +22,14 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-@SpringBootTest
+@SpringBootTest(properties = "stock-exchange.matching.mode=WHOLE_ORDER")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Testcontainers
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @TestMethodOrder(MethodOrderer.MethodName.class)
@@ -123,6 +125,10 @@ public class ProcessEngineTest extends BaseTest {
         Double salePrice = settlementSummary.stream().mapToDouble(m -> m.getSale()).sum();
         Assertions.assertThat(soldTo).isEqualTo(Arrays.asList(order1.getId(), order3.getId()));
         Assertions.assertThat(salePrice).isEqualTo(4000.0);
+        Assertions.assertThat(openOrderRepository.existsById(order2.getId())).isTrue();
+        Assertions.assertThat(openOrderRepository.existsById(order1.getId())).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(order3.getId())).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(executeOrder.getId())).isFalse();
     }
 
     @SneakyThrows
@@ -420,9 +426,242 @@ public class ProcessEngineTest extends BaseTest {
         Assertions.assertThat(salePrice).isEqualTo(4250.0);
     }
 
+    @Test
+    public void test14_laterSellMatchesRestingBuyAtTheSamePrice() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder restingBuy = createBuy(10.0, 200, processEngine);
+        OpenOrder incomingSell = createSell(10.0, 200, processEngine);
+
+        boolean matched = processEngine.process(incomingSell);
+
+        Assertions.assertThat(matched).isTrue();
+        Assertions.assertThat(settledOrderRepository.findById(restingBuy.getId())).isPresent();
+        Assertions.assertThat(settledOrderRepository.findById(incomingSell.getId())).isPresent();
+        Assertions.assertThat(openOrderRepository.existsById(restingBuy.getId())).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(incomingSell.getId())).isFalse();
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findBySellOrderIdOrderByBuyOrderId(incomingSell.getId());
+        Assertions.assertThat(summaries).hasSize(1);
+        Assertions.assertThat(summaries.get(0).getBuyOrderId()).isEqualTo(restingBuy.getId());
+        Assertions.assertThat(summaries.get(0).getQuantity()).isEqualTo(200);
+    }
+
+    @Test
+    public void test15_noPriceOverlapLeavesOrdersOpenThenLaterSellMatchesBuy() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder expensiveSell = createSell(10.0, 100, processEngine);
+        OpenOrder restingBuy = createBuy(9.0, 100, processEngine);
+
+        Assertions.assertThat(processEngine.process(restingBuy)).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(expensiveSell.getId())).isTrue();
+        Assertions.assertThat(openOrderRepository.existsById(restingBuy.getId())).isTrue();
+
+        OpenOrder incomingSell = createSell(9.0, 100, processEngine);
+        Assertions.assertThat(processEngine.process(incomingSell)).isTrue();
+
+        Assertions.assertThat(settledOrderRepository.findById(restingBuy.getId())).isPresent();
+        Assertions.assertThat(settledOrderRepository.findById(incomingSell.getId())).isPresent();
+        Assertions.assertThat(openOrderRepository.existsById(expensiveSell.getId())).isTrue();
+        Assertions.assertThat(openOrderRepository.existsById(restingBuy.getId())).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(incomingSell.getId())).isFalse();
+    }
+
+    @Test
+    public void test16_unselectedOrdersStayOpenForLaterOrders() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder firstSell = createSell(10.0, 100, processEngine);
+        OpenOrder unselectedSell = createSell(10.0, 200, processEngine);
+        OpenOrder thirdSell = createSell(10.0, 300, processEngine);
+        OpenOrder incomingBuy = createBuy(10.0, 400, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingBuy)).isTrue();
+
+        Assertions.assertThat(openOrderRepository.existsById(unselectedSell.getId())).isTrue();
+        Assertions.assertThat(openOrderRepository.existsById(firstSell.getId())).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(thirdSell.getId())).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(incomingBuy.getId())).isFalse();
+
+        OpenOrder laterBuy = createBuy(10.0, 200, processEngine);
+        Assertions.assertThat(processEngine.process(laterBuy)).isTrue();
+        Assertions.assertThat(settledOrderRepository.findById(unselectedSell.getId())).isPresent();
+        Assertions.assertThat(settledOrderRepository.findById(laterBuy.getId())).isPresent();
+    }
+
+    @Test
+    public void test17_acceptanceOrderBreaksSameTimestampAndPriceTie() {
+        LocalDateTime acceptedAt = LocalDateTime.now();
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder acceptedFirst = createSell(10.0, 100, acceptedAt, processEngine);
+        OpenOrder acceptedSecond = createSell(10.0, 200, acceptedAt, processEngine);
+        OpenOrder incomingBuy = createBuy(10.0, 100, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingBuy)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findByBuyOrderIdOrderBySellOrderId(incomingBuy.getId());
+        Assertions.assertThat(summaries).hasSize(1);
+        Assertions.assertThat(summaries.get(0).getSellOrderId()).isEqualTo(acceptedFirst.getId());
+        Assertions.assertThat(openOrderRepository.existsById(acceptedSecond.getId())).isTrue();
+        Assertions.assertThat(openOrderRepository.existsById(acceptedFirst.getId())).isFalse();
+    }
+
+    @Test
+    public void test18_ordersForDifferentTickersDoNotMatch() {
+        ProcessEngine abcEngine = getProcessEngine("ABC");
+        ProcessEngine xyzEngine = getProcessEngine("XYZ");
+        OpenOrder abcSell = createTickerOrder("ABC", SellType.SELL, 10.0, 100, abcEngine);
+        OpenOrder xyzBuy = createTickerOrder("XYZ", SellType.BUY, 10.0, 100, xyzEngine);
+
+        Assertions.assertThat(xyzEngine.process(xyzBuy)).isFalse();
+        Assertions.assertThat(openOrderRepository.existsById(abcSell.getId())).isTrue();
+        Assertions.assertThat(openOrderRepository.existsById(xyzBuy.getId())).isTrue();
+
+        OpenOrder abcBuy = createTickerOrder("ABC", SellType.BUY, 10.0, 100, abcEngine);
+        Assertions.assertThat(abcEngine.process(abcBuy)).isTrue();
+        Assertions.assertThat(settledOrderRepository.findById(abcSell.getId())).isPresent();
+        Assertions.assertThat(openOrderRepository.existsById(xyzBuy.getId())).isTrue();
+    }
+
+    @Test
+    public void test19_settlementUsesEachMatchedSellersAskingPrice() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder tenDollarSell = createSell(10.0, 100, processEngine);
+        OpenOrder nineDollarSell = createSell(9.0, 100, processEngine);
+        OpenOrder incomingBuy = createBuy(10.0, 200, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingBuy)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findByBuyOrderIdOrderBySellOrderId(incomingBuy.getId());
+        Assertions.assertThat(summaries).hasSize(2);
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getSellOrderId)
+                .containsExactly(tenDollarSell.getId(), nineDollarSell.getId());
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getPrice)
+                .containsExactly(10.0, 9.0);
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getSale)
+                .containsExactly(1000.0, 900.0);
+    }
+
+    @Test
+    public void test20_orderCannotBePartiallyFilled() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder sell = createSell(10.0, 200, processEngine);
+        OpenOrder buy = createBuy(10.0, 100, processEngine);
+
+        Assertions.assertThat(processEngine.process(buy)).isFalse();
+
+        Assertions.assertThat(openOrderRepository.existsById(sell.getId())).isTrue();
+        Assertions.assertThat(openOrderRepository.existsById(buy.getId())).isTrue();
+        Assertions.assertThat(settledOrderRepository.findById(sell.getId())).isEmpty();
+        Assertions.assertThat(settledOrderRepository.findById(buy.getId())).isEmpty();
+        Assertions.assertThat(settlementSummaryRepository
+                .findByBuyOrderIdOrderBySellOrderId(buy.getId())).isEmpty();
+    }
+
+    @Test
+    public void test21_sellSkipsFirstBuyThatIsTooSmall() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder firstBuy = createBuy(10.0, 100, processEngine);
+        OpenOrder secondBuy = createBuy(10.0, 200, processEngine);
+        OpenOrder thirdBuy = createBuy(10.0, 300, processEngine);
+        OpenOrder incomingSell = createSell(10.0, 500, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingSell)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findBySellOrderIdOrderByBuyOrderId(incomingSell.getId());
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getBuyOrderId)
+                .containsExactly(secondBuy.getId(), thirdBuy.getId());
+        Assertions.assertThat(openOrderRepository.existsById(firstBuy.getId())).isTrue();
+    }
+
+    @Test
+    public void test22_sellSkipsFirstBuyThatIsTooLarge() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder firstBuy = createBuy(10.0, 10000, processEngine);
+        OpenOrder secondBuy = createBuy(10.0, 200, processEngine);
+        OpenOrder thirdBuy = createBuy(10.0, 300, processEngine);
+        OpenOrder incomingSell = createSell(10.0, 500, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingSell)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findBySellOrderIdOrderByBuyOrderId(incomingSell.getId());
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getBuyOrderId)
+                .containsExactly(secondBuy.getId(), thirdBuy.getId());
+        Assertions.assertThat(openOrderRepository.existsById(firstBuy.getId())).isTrue();
+    }
+
+    @Test
+    public void test23_sellSkipsOversizedMiddleBuy() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder firstBuy = createBuy(10.0, 100, processEngine);
+        OpenOrder oversizedBuy = createBuy(10.0, 2000, processEngine);
+        OpenOrder thirdBuy = createBuy(10.0, 300, processEngine);
+        OpenOrder incomingSell = createSell(10.0, 400, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingSell)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findBySellOrderIdOrderByBuyOrderId(incomingSell.getId());
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getBuyOrderId)
+                .containsExactly(firstBuy.getId(), thirdBuy.getId());
+        Assertions.assertThat(openOrderRepository.existsById(oversizedBuy.getId())).isTrue();
+    }
+
+    @Test
+    public void test24_sellCanUseWholeOrdersAcrossEligibleBidPrices() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder nineDollarBuy = createBuy(9.0, 100, processEngine);
+        OpenOrder tenDollarBuy = createBuy(10.0, 200, processEngine);
+        OpenOrder incomingSell = createSell(9.0, 300, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingSell)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findBySellOrderIdOrderByBuyOrderId(incomingSell.getId());
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getBuyOrderId)
+                .containsExactly(nineDollarBuy.getId(), tenDollarBuy.getId());
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getPrice)
+                .containsExactly(9.0, 9.0);
+        Assertions.assertThat(summaries).extracting(SettlementSummary::getSale)
+                .containsExactly(900.0, 1800.0);
+    }
+
+    @Test
+    public void test25_buyMatchesEligibleLowerAskWhenNoExactPriceBucketExists() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder lowerAsk = createSell(9.0, 100, processEngine);
+        OpenOrder incomingBuy = createBuy(10.0, 100, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingBuy)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findByBuyOrderIdOrderBySellOrderId(incomingBuy.getId());
+        Assertions.assertThat(summaries).hasSize(1);
+        Assertions.assertThat(summaries.get(0).getSellOrderId()).isEqualTo(lowerAsk.getId());
+        Assertions.assertThat(summaries.get(0).getPrice()).isEqualTo(9.0);
+    }
+
+    @Test
+    public void test26_sellMatchesEligibleHigherBidWhenNoExactPriceBucketExists() {
+        ProcessEngine processEngine = getProcessEngine(STOCK_TICKER_1);
+        OpenOrder higherBid = createBuy(10.0, 100, processEngine);
+        OpenOrder incomingSell = createSell(9.0, 100, processEngine);
+
+        Assertions.assertThat(processEngine.process(incomingSell)).isTrue();
+
+        List<SettlementSummary> summaries = settlementSummaryRepository
+                .findBySellOrderIdOrderByBuyOrderId(incomingSell.getId());
+        Assertions.assertThat(summaries).hasSize(1);
+        Assertions.assertThat(summaries.get(0).getBuyOrderId()).isEqualTo(higherBid.getId());
+        Assertions.assertThat(summaries.get(0).getPrice()).isEqualTo(9.0);
+    }
+
     private ProcessEngine getProcessEngine(String ticker) {
         ProcessEngine processEngine = (ProcessEngine) context.getBean("processEngine", ticker);
         processEngine.reset();
+        Assertions.assertThat(processEngine.getMatchingMode()).isEqualTo(MatchingMode.WHOLE_ORDER);
         return processEngine;
     }
 
@@ -452,6 +691,19 @@ public class ProcessEngineTest extends BaseTest {
     @SneakyThrows
     private OpenOrder createBuy(Double price, Integer quantity, LocalDateTime localDateTime, ProcessEngine processEngine) {
         OpenOrder order = openOrderRepository.save(OpenOrder.builder().price(price).quantity(quantity).type(SellType.BUY).ticker(STOCK_TICKER_1).orderDate(localDateTime).build());
+        processEngine.build(order);
+        return order;
+    }
+
+    private OpenOrder createTickerOrder(String ticker, SellType type, Double price, Integer quantity,
+                                        ProcessEngine processEngine) {
+        OpenOrder order = openOrderRepository.save(OpenOrder.builder()
+                .ticker(ticker)
+                .price(price)
+                .quantity(quantity)
+                .type(type)
+                .orderDate(LocalDateTime.now())
+                .build());
         processEngine.build(order);
         return order;
     }

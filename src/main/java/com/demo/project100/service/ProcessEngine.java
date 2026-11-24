@@ -2,8 +2,8 @@ package com.demo.project100.service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import jakarta.transaction.Transactional;
@@ -30,11 +30,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 @Data
 public class ProcessEngine {
 
+    private static final CombinationSum COMBINATION_SUM = new CombinationSum();
+
     //Unbounded blocking queue, will take as many orders as permitted by memory.
     private BlockingQueue<OpenOrder> orderQueue = new LinkedBlockingDeque<>();
     private volatile boolean running;
 
     private String ticker;
+    private MatchingMode matchingMode = MatchingMode.WHOLE_ORDER;
     private OrderMap sellMap;
     private OrderMap buyMap;
 
@@ -75,6 +78,11 @@ public class ProcessEngine {
         buyMap = new OrderMap();
     }
 
+    public ProcessEngine(String ticker, String matchingMode) {
+        this(ticker);
+        this.matchingMode = MatchingMode.valueOf(matchingMode.trim().toUpperCase());
+    }
+
     public synchronized void reset() {
         sellMap = new OrderMap(true);
         buyMap = new OrderMap();
@@ -86,36 +94,8 @@ public class ProcessEngine {
      * Single thread of execution per stock ticker to ensure order fulfillment is accurate.
      */
     public void build(OpenOrder orderItem) {
-        Double key = orderItem.getPrice();
-        if (orderItem.getType().equals(SellType.SELL)) {
-            OrderChain newNode;
-            if (sellMap.getPriceMap().containsKey(key)) {
-                //already exists
-                OrderChain currNode = sellMap.getLastNodeMap().get(key);
-                newNode = new OrderChain(orderItem, currNode, null);
-                currNode.setNext(newNode);
-                sellMap.getLastNodeMap().put(key, newNode);
-            } else {
-                //New node
-                newNode = new OrderChain(orderItem, null, null);
-                sellMap.getLastNodeMap().put(key, newNode);
-                sellMap.getPriceMap().put(key, newNode);
-            }
-        } else {
-            OrderChain newNode;
-            if (buyMap.getPriceMap().containsKey(key)) {
-                //already exists
-                OrderChain currNode = buyMap.getLastNodeMap().get(key);
-                newNode = new OrderChain(orderItem, currNode, null);
-                currNode.setNext(newNode);
-                buyMap.getLastNodeMap().put(key, newNode);
-            } else {
-                //New node
-                newNode = new OrderChain(orderItem, null, null);
-                buyMap.getLastNodeMap().put(key, newNode);
-                buyMap.getPriceMap().put(key, newNode);
-            }
-        }
+        OrderMap orderMap = orderItem.getType().equals(SellType.SELL) ? sellMap : buyMap;
+        orderMap.add(orderItem);
     }
 
     /**
@@ -132,99 +112,39 @@ public class ProcessEngine {
     }
 
     private boolean processOrder(OpenOrder orderItem, OrderMap orderMap1, OrderMap orderMap2, SellType sellType) {
-        List<OrderChain> resultOrderChains = new ArrayList<>();
-        if (orderMap1.getPriceMap().size() > 0) {
-            //Short circuit and link all nodes in one long continuous chain.
-            List<OrderChain> revertList = new ArrayList<>();
+        if (matchingMode == MatchingMode.PARTIAL) {
+            return processPartialOrder(orderItem, orderMap1, orderMap2);
+        }
 
-            OrderChain previous = null;
-            for (Map.Entry<Double, OrderChain> entry : orderMap1.getPriceMap().entrySet()) {
-                if (previous != null) {
-                    revertList.add(previous);
-                    previous.setNext(orderMap1.getPriceMap().get(entry.getKey()));
-                }
-                if (entry.getKey() <= orderItem.getPrice()) {
-                    previous = orderMap1.getLastNodeMap().get(entry.getKey());
+        OrderChain startingNode = orderMap1.getPriceMap().get(orderItem.getPrice());
+        List<OrderChain> resultOrderChains = startingNode == null
+                ? List.of()
+                : COMBINATION_SUM.combinationSum(startingNode, orderItem.getQuantity());
+        if (resultOrderChains.isEmpty()) {
+            // Search only prices after the starting bucket in the book's
+            // configured order. Build a view of candidates instead of
+            // temporarily rewiring the live FIFO chains.
+            List<OrderChain> candidateOrders = new ArrayList<>();
+            for (OrderChain priceLevelHead : orderMap1.getPriceMap()
+                    .tailMap(orderItem.getPrice(), true).values()) {
+                for (OrderChain node = priceLevelHead; node != null; node = node.getNext()) {
+                    candidateOrders.add(node);
                 }
             }
-
-            //Find if order can be fulfilled
-            resultOrderChains = new CombinationSum().combinationSum(orderMap1.getPriceMap().get(orderItem.getPrice()), orderItem.getQuantity());
-
-            //Reset the short circuiting.
-            for (OrderChain revertItem : revertList) {
-                revertItem.setNext(null);
-            }
+            resultOrderChains = COMBINATION_SUM.combinationSum(candidateOrders, orderItem.getQuantity());
         }
 
         if (resultOrderChains.size() > 0) {
-
-            //Clean the Map2
-            OrderChain orderItemNode = orderMap2.getPriceMap().get(orderItem.getPrice());
-            if (orderItemNode != null) {
-                if (orderItemNode.getPrevious() == null && orderItemNode.getNext() == null) {
-                    //If its the only node then delete the map key
-                    orderMap2.getPriceMap().remove(orderItemNode.getItem().getPrice());
-                    orderMap2.getLastNodeMap().remove(orderItemNode.getItem().getPrice());
-                } else if (orderItemNode.getPrevious() == null && orderItemNode.getNext() != null) {
-                    //If its the first node then point head to next node.
-                    OrderChain newHead = orderItemNode.getNext();
-                    newHead.setPrevious(null);
-                    orderItemNode.setNext(null);
-                    orderMap2.getPriceMap().put(newHead.getItem().getPrice(), newHead);
-                    //Set the currNode
-                    orderMap2.getLastNodeMap().put(newHead.getItem().getPrice(), newHead);
-                } else if (orderItemNode.getPrevious() != null && orderItemNode.getNext() != null) {
-                    //If node in middle, break both links
-                    OrderChain newNext = orderItemNode.getNext();
-                    OrderChain newPrevious = orderItemNode.getPrevious();
-                    newPrevious.setNext(newNext);
-                    newNext.setPrevious(newPrevious);
-                    orderItemNode.setPrevious(null);
-                    orderItemNode.setNext(null);
-                } else if (orderItemNode.getPrevious() != null && orderItemNode.getNext() == null) {
-                    //Last node
-                    OrderChain previousNode = orderItemNode.getPrevious();
-                    previousNode.setNext(null);
-                    orderItemNode.setPrevious(null);
-                    //Set the currNode
-                    orderMap2.getLastNodeMap().put(previousNode.getItem().getPrice(), previousNode);
-                }
+            OrderChain incomingNode = orderMap2.find(orderItem);
+            if (incomingNode != null) {
+                orderMap2.remove(incomingNode);
             }
 
-            //Break the links & clean Map1
             for (OrderChain orderChain : resultOrderChains) {
-                if (orderChain.getPrevious() == null && orderChain.getNext() == null) {
-                    //If its the only node then delete the map key
-                    orderMap1.getPriceMap().remove(orderChain.getItem().getPrice());
-                    orderMap1.getLastNodeMap().remove(orderChain.getItem().getPrice());
-                } else if (orderChain.getPrevious() == null && orderChain.getNext() != null) {
-                    //If its the first node then point head to next node.
-                    OrderChain newHead = orderChain.getNext();
-                    newHead.setPrevious(null);
-                    orderChain.setNext(null);
-                    orderMap1.getPriceMap().put(newHead.getItem().getPrice(), newHead);
-                    //Set the currNode
-                    orderMap1.getLastNodeMap().put(newHead.getItem().getPrice(), newHead);
-                } else if (orderChain.getPrevious() != null && orderChain.getNext() != null) {
-                    //If node in middle, break both links
-                    OrderChain newNext = orderChain.getNext();
-                    OrderChain newPrevious = orderChain.getPrevious();
-                    newPrevious.setNext(newNext);
-                    newNext.setPrevious(newPrevious);
-                    orderChain.setPrevious(null);
-                    orderChain.setNext(null);
-                } else if (orderChain.getPrevious() != null && orderChain.getNext() == null) {
-                    //Last node
-                    OrderChain previousNode = orderChain.getPrevious();
-                    previousNode.setNext(null);
-                    orderChain.setPrevious(null);
-                    //Set the currNode
-                    orderMap1.getLastNodeMap().put(previousNode.getItem().getPrice(), previousNode);
-                }
+                orderMap1.remove(orderChain);
             }
 
-            List<OpenOrder> result = new ArrayList<>();
+            List<OpenOrder> result = new ArrayList<>(resultOrderChains.size());
             for (OrderChain orderChain : resultOrderChains) {
                 result.add(orderChain.getItem());
             }
@@ -234,12 +154,124 @@ public class ProcessEngine {
         return false;
     }
 
+    /** Match in conventional best-price then arrival order, allowing residual quantities. */
+    private boolean processPartialOrder(OpenOrder incomingOrder, OrderMap restingBook, OrderMap incomingBook) {
+        OrderChain incomingNode = incomingBook.find(incomingOrder);
+        List<OrderChain> candidates = new ArrayList<>();
+        for (OrderChain priceLevelHead : restingBook.getPriceMap()
+                .tailMap(incomingOrder.getPrice(), true).values()) {
+            for (OrderChain node = priceLevelHead; node != null; node = node.getNext()) {
+                candidates.add(node);
+            }
+        }
+
+        // The legacy books use comparators that preserve the original whole-order
+        // examples. Partial matching uses the standard best ask / best bid order.
+        Comparator<OrderChain> bestPriceFirst = incomingOrder.getType() == SellType.BUY
+                ? Comparator.comparingDouble(node -> node.getItem().getPrice())
+                : Comparator.comparingDouble((OrderChain node) -> node.getItem().getPrice()).reversed();
+        candidates.sort(bestPriceFirst); // List.sort is stable, retaining FIFO at equal prices.
+
+        int incomingRemaining = incomingOrder.getQuantity();
+        List<Fill> fills = new ArrayList<>();
+        List<OrderChain> completedRestingNodes = new ArrayList<>();
+        List<OpenOrder> partiallyFilledRestingOrders = new ArrayList<>();
+        for (OrderChain candidate : candidates) {
+            if (incomingRemaining == 0) {
+                break;
+            }
+
+            OpenOrder restingOrder = candidate.getItem();
+            int fillQuantity = Math.min(incomingRemaining, restingOrder.getQuantity());
+            if (restingOrder.getOriginalQuantity() == null) {
+                restingOrder.setOriginalQuantity(restingOrder.getQuantity());
+            }
+            if (incomingOrder.getOriginalQuantity() == null) {
+                incomingOrder.setOriginalQuantity(incomingOrder.getQuantity());
+            }
+
+            incomingRemaining -= fillQuantity;
+            incomingOrder.setQuantity(incomingRemaining);
+            restingOrder.setQuantity(restingOrder.getQuantity() - fillQuantity);
+            fills.add(new Fill(restingOrder, fillQuantity));
+            if (restingOrder.getQuantity() == 0) {
+                completedRestingNodes.add(candidate);
+            } else {
+                partiallyFilledRestingOrders.add(restingOrder);
+            }
+        }
+
+        if (fills.isEmpty()) {
+            return false;
+        }
+
+        LocalDateTime executedDate = LocalDateTime.now();
+        List<SettlementSummary> summaries = new ArrayList<>(fills.size());
+        for (Fill fill : fills) {
+            OpenOrder restingOrder = fill.restingOrder();
+            OpenOrder buyOrder = incomingOrder.getType() == SellType.BUY ? incomingOrder : restingOrder;
+            OpenOrder sellOrder = incomingOrder.getType() == SellType.SELL ? incomingOrder : restingOrder;
+            summaries.add(SettlementSummary.builder()
+                    .buyOrderId(buyOrder.getId())
+                    .sellOrderId(sellOrder.getId())
+                    .price(sellOrder.getPrice())
+                    .quantity(fill.quantity())
+                    .sale(sellOrder.getPrice() * fill.quantity())
+                    .build());
+        }
+
+        List<SettledOrder> completedOrders = new ArrayList<>();
+        List<Long> completedIds = new ArrayList<>();
+        List<OpenOrder> changedOpenOrders = new ArrayList<>();
+        for (OrderChain node : completedRestingNodes) {
+            OpenOrder order = node.getItem();
+            completedOrders.add(toSettledOrder(order, executedDate));
+            completedIds.add(order.getId());
+        }
+        for (OrderChain node : completedRestingNodes) {
+            restingBook.remove(node);
+        }
+
+        if (incomingRemaining == 0) {
+            completedOrders.add(toSettledOrder(incomingOrder, executedDate));
+            completedIds.add(incomingOrder.getId());
+            if (incomingNode != null) {
+                incomingBook.remove(incomingNode);
+            }
+        } else {
+            changedOpenOrders.add(incomingOrder);
+        }
+        changedOpenOrders.addAll(partiallyFilledRestingOrders);
+
+        settledOrderRepository.saveAll(completedOrders);
+        settlementSummaryRepository.saveAll(summaries);
+        openOrderRepository.saveAll(changedOpenOrders);
+        openOrderRepository.deleteAllById(completedIds);
+        return true;
+    }
+
+    private SettledOrder toSettledOrder(OpenOrder order, LocalDateTime executedDate) {
+        return SettledOrder.builder()
+                .id(order.getId())
+                .ticker(order.getTicker())
+                .price(order.getPrice())
+                .type(order.getType())
+                .quantity(order.getOriginalQuantity() == null ? order.getQuantity() : order.getOriginalQuantity())
+                .orderDate(order.getOrderDate())
+                .executedDate(executedDate)
+                .status(Status.COMPLETED)
+                .build();
+    }
+
+    private record Fill(OpenOrder restingOrder, int quantity) { }
+
     @Transactional
     public void completeOrder(OpenOrder openOrder, List<OpenOrder> resultOrders, SellType sellType) {
-        List<SettledOrder> completeItems = new ArrayList<>();
-        List<SettlementSummary> settlementSummaries = new ArrayList<>();
-        List<Long> deleteOrderIds = new ArrayList<>();
+        List<SettledOrder> completeItems = new ArrayList<>(resultOrders.size() + 1);
+        List<SettlementSummary> settlementSummaries = new ArrayList<>(resultOrders.size());
+        List<Long> deleteOrderIds = new ArrayList<>(resultOrders.size() + 1);
         deleteOrderIds.add(openOrder.getId());
+        LocalDateTime executedDate = LocalDateTime.now();
 
         SettledOrder settledOrder = SettledOrder.builder()
                 .id(openOrder.getId())
@@ -248,7 +280,7 @@ public class ProcessEngine {
                 .type(openOrder.getType())
                 .quantity(openOrder.getQuantity())
                 .orderDate(openOrder.getOrderDate())
-                .executedDate(LocalDateTime.now())
+                .executedDate(executedDate)
                 .status(Status.COMPLETED)
                 .build();
         completeItems.add(settledOrder);
@@ -262,7 +294,7 @@ public class ProcessEngine {
                     .type(item.getType())
                     .quantity(item.getQuantity())
                     .orderDate(item.getOrderDate())
-                    .executedDate(LocalDateTime.now())
+                    .executedDate(executedDate)
                     .status(Status.COMPLETED)
                     .build();
             completeItems.add(localOrderItem);

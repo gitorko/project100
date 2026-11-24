@@ -1,0 +1,11 @@
+meta {
+  name: Get Settled Orders
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/settled-order?page=0&sort=id,desc
+  body: none
+  auth: none
+}

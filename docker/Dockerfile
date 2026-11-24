@@ -1,6 +1,5 @@
-FROM openjdk:17
-WORKDIR /var/app
-COPY ./build/libs/project100-1.0.0.jar /var/app/project100-1.0.0.jar
-ENV _JAVA_OPTIONS '-Dspring.datasource.host=db-server'
-CMD [ "java", "-jar", "/var/app/project100-1.0.0.jar" ]
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY build/libs/*.jar app.jar
 EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
